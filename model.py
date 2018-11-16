@@ -146,7 +146,7 @@ class ForestClassifier:
 	def __init__(self,dataReader,valkey):
 		self.dataReader = dataReader
 		self.valkey = valkey
-		self.valAnimeInfo, self.valAnimeScore = self.dataReader.getUserAnime(valkey)
+		self.valAnimeInfo, self.valAnimeScore = self.dataReader.getUserAnime(self.valkey)
 		
 		NNNKeys = self.dataReader.getNNNeighbors(self.valkey,10)
 		self.trees = []
@@ -164,11 +164,13 @@ class ForestClassifier:
 		# return both the prediction and the ground truth
 		return prediction, self.valAnimeScore
 
+print('initializing reader object')
 dataReader = myDataReader(.2)
+print('done with reader object')
 
 # NOTE: not sure if forestclassifier even runs right now
 # accuracies = []
-# for valkey in myDataReader:
-# 	classifier = ForestClassifier(myDataReader,valkey)
+# for valkey in dataReader:
+# 	classifier = ForestClassifier(dataReader,valkey)
 # 	pred,actual = classifier.classify()
 # 	accuracies.append(np.sum(np.equal(pred,actual)))
