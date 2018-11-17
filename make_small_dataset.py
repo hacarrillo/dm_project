@@ -27,8 +27,6 @@ with open("./ourUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  
             userAnimeListArray[row[0]] = [row] 
         if c % 1000000 == 0:
             print(c)
-        if c == 1000000:
-            break
 
 with open("./smallUserList_genres.csv", "w", newline='', errors='replace') as result, open("./smallUserAnimeList.csv", "w", newline='', errors='replace') as result1 :  # noqa
     userList = open("./ourUserListGenres.csv","rt", encoding='ISO-8859-1')
