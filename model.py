@@ -23,11 +23,14 @@ from sklearn import tree
 # This class runs. Might need debugging though
 class myDataReader:
 	def __init__(self,train_percent):
+		np.random.seed(0)
 		self.currentVal = 0
 		self.userListDict = {}
 		self.animeListDict = {}
 		self.userAnimeListDict = {}
-		with open("./ourUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  open("./ourUserAnimeList.csv", "rt", encoding='ISO-8859-1') as userAnimeList,  open("./ourExtendedAnimeList.csv", "rt", encoding='ISO-8859-1') as animeList: 
+		self.userAnimeID = {}
+		# turn paths into input for object
+		with open("./mediumUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  open("./mediumUserAnimeList.csv", "rt", encoding='ISO-8859-1') as userAnimeList,  open("./ourExtendedAnimeList.csv", "rt", encoding='ISO-8859-1') as animeList: 
 			userListReader = csv.reader(userList)
 			animeListReader = csv.reader(animeList)
 			userAnimeListReader = csv.reader(userAnimeList)
@@ -62,24 +65,26 @@ class myDataReader:
 				for i in range(len(row)):
 					if row[i] == "Unknown":
 						row[i] = -1
-				self.animeListDict[row[0]] = np.array(row[20:]).astype(float)
+				self.animeListDict[row[0]] = np.array(row[26:]).astype(float)
 
-			# this is just to not read in all the data so I can debug/code
-			c = 0
 			# first list is id, second is scores
 			for row in userAnimeListReader:
-				if c == 10000:
-					break
-				c = c + 1
 				# change scores to 0 or 1
 				# like = 0 if int(row[3]) <= 5 else 1
 				# leave as is for now
 				like = int(row[3])
+				like = 0 if int(row[3]) <= 7 else 1
 				if row[0] in self.userAnimeListDict:
 					self.userAnimeListDict[row[0]][0] = self.userAnimeListDict[row[0]][0] + [row[1]]
 					self.userAnimeListDict[row[0]][1] = self.userAnimeListDict[row[0]][1] + [like]
 				else:
 					self.userAnimeListDict[row[0]] = [[row[1]],[like]]
+
+				if row[0] in self.userAnimeID:
+					self.userAnimeID[row[0]] = self.userAnimeID[row[0]] + [int(row[1])]
+				else:
+					# print(row[0])
+					self.userAnimeID[row[0]] = [int(row[1])]
 
 			train_indices = np.random.choice(len(self.userListDict),int(len(self.userListDict)*train_percent))
 
@@ -95,29 +100,88 @@ class myDataReader:
 				c = c + 1
 			self.valSize = len(self.val_keys)
 
-	def getNNNeighbors(self, trialkey, N):
+	def getNNNeighborsAnime(self, trialkey, N, animeID):
 		target_features = self.userListDict[trialkey];
 
 		keys = []
 		similarity = []
+		contains_show = []
 		for key in self.train_keys:
 			keys.append(key)
 			features = self.userListDict[key]
 			s = np.dot(target_features,features)/(np.linalg.norm(target_features)*np.linalg.norm(features))
 			if s == np.inf or s == np.nan:
 				s = -1;
+
 			# Need some sort of way to account for magnitude. More shows is better
 			# s = n*s
+			contains = False
+			if key in self.userAnimeListDict and animeID in self.userAnimeListDict[key][0]:
+				contains = True
+			contains_show.append(contains)
 			similarity.append(s)
 
 		similarity = np.array(similarity)
 		keys = np.array(keys)
+		# contains_show = np.array(contains_show)
 
-		idx = np.argpartition(-1*similarity, N)
+		similarity = similarity[contains_show]
+		keys = keys[contains_show]
+
+		# print(N)
+		# print(np.size(similarity))
+		total_users = min(N,np.size(similarity))
+
+		idx = np.argpartition(-1*similarity, total_users-1)
+		idx = idx[:total_users]
+		keys = keys[idx]
+		similarity = similarity[idx]
+		key_pairs = list(zip(keys,similarity))	
+
+		return key_pairs
+
+	def getNNNeighbors(self, trialkey, N):
+		target_features = self.userListDict[trialkey]
+		binary_target_features = self.userAnimeID[trialkey]
+
+		keys = []
+		similarity = []
+		for key in self.train_keys:
+			features = self.userListDict[key]
+			if key in self.userAnimeID:
+				keys.append(key)
+				binary_features = self.userAnimeID[key]
+			else:
+				continue
+
+			intersection = sum(np.isin(binary_features,binary_target_features))
+			union = np.size(binary_features) + np.size(binary_target_features) - intersection
+
+			if union == 0:
+				su = 1
+			else:
+				su = 1 - intersection/union
+
+			s = np.dot(target_features,features)/(np.linalg.norm(target_features)*np.linalg.norm(features))
+			if s == np.inf or s == np.nan:
+				s = -1;
+
+			s = (s+1)/2
+
+			similarity.append(su)
+
+		print(min(similarity))
+		print(max(similarity))
+		similarity = np.array(similarity)
+		keys = np.array(keys)
+		# contains_show = np.array(contains_show)
+
+		# idx = np.argpartition(-1*similarity, N)
+		idx = np.argpartition(similarity, N)
 		idx = idx[:N]
 		keys = keys[idx]
 		similarity = similarity[idx]
-		key_pairs = list(zip(keys,similarity))
+		key_pairs = list(zip(keys,similarity))	
 
 		return key_pairs
 
@@ -128,8 +192,28 @@ class myDataReader:
 		animeScore = []
 		for idx in range(totalAnime):
 			animeInfo.append(self.animeListDict[userAnime[0][idx]])
-			animeScore.append([userAnime[1][idx]])
+			animeScore.append(userAnime[1][idx])
 		return animeInfo, animeScore
+
+	def containsAnime(self, userkey, animeID):
+		userAnime = self.userAnimeListDict[userkey]
+		totalAnime = len(userAnime[0])
+		for idx in range(totalAnime):
+			if userAnime[0][idx] == animeID:
+				return True
+		return False
+
+	def makeFilter(self, animeID):
+		def myFilter(key):
+			return self.containsAnime(key[0], animeID)
+		return myFilter
+
+	def getUserAnimeScore(self, userkey, animeID):
+		userAnime = self.userAnimeListDict[userkey]
+		totalAnime = len(userAnime[0])
+		for idx in range(totalAnime):
+			if userAnime[0][idx] == animeID:
+				return userAnime[1][idx]
 
 	def __iter__(self):
 		return iter(self.val_keys)
@@ -141,36 +225,111 @@ class myDataReader:
 			self.currentVal += 1
 			return self.val_keys[self.currentVal-1]
 
-# NOT SURE IF THIS WORKS YET
 class ForestClassifier:
-	def __init__(self,dataReader,valkey):
+	def __init__(self,dataReader,valkey,N):
 		self.dataReader = dataReader
 		self.valkey = valkey
 		self.valAnimeInfo, self.valAnimeScore = self.dataReader.getUserAnime(self.valkey)
-		
-		NNNKeys = self.dataReader.getNNNeighbors(self.valkey,10)
+		self.N = N
+		self.valAnimeInfo = np.array(self.valAnimeInfo)
+		self.valAnimeScore = np.array(self.valAnimeScore)
+
+		self.NNNKeys = self.dataReader.getNNNeighbors(self.valkey,self.N)
+
 		self.trees = []
-		for neighbor_key, neighbor_similarity in NNNKeys:
+		for neighbor_key, neighbor_similarity in self.NNNKeys:
 			animeInfo, animeGT = self.dataReader.getUserAnime(neighbor_key)
 			clf = tree.DecisionTreeClassifier()
-			clf = clf.fit(animeInfo,animeGT)
-			self.trees = self.trees.append(clf)
+			mytree = clf.fit(animeInfo,animeGT)
+			self.trees.append(mytree)
 
 	def classify(self):
-		predictions = [tree.predict([self.valAnimeInfo]) for tree in trees]
+		predictions = [tree.predict(self.valAnimeInfo) for tree in self.trees]
+		predictions = np.array(predictions)
+
 		# how do I merge the results
 		# majority vote?
-		prediction = max(set(predictions),key=predictions.count)
+		s = np.shape(predictions)
+		totalAnime = s[1]
+
+		consensus = []
+		for i in range(totalAnime):
+			tmp = np.unique(predictions[:,i],return_counts=True)
+			counts = tmp[1]
+			scores = tmp[0]
+			idx = np.argmax(counts)
+			consensus.append(scores[idx])
+
+		# prediction = [max(set(predictions[:,i]),key=count) for i in range(totalAnime)]
 		# return both the prediction and the ground truth
-		return prediction, self.valAnimeScore
+		return consensus, self.valAnimeScore
+
+class FilterClassifier:
+	def __init__(self,dataReader,valkey,N):
+		self.dataReader = dataReader
+		self.valkey = valkey
+		self.valAnimeInfo, self.valAnimeScore = self.dataReader.getUserAnime(self.valkey)
+		self.N = N
+		self.valAnimeInfo = np.array(self.valAnimeInfo)
+		self.valAnimeScore = np.array(self.valAnimeScore)
+
+		self.NNNKeys = self.dataReader.getNNNeighbors(self.valkey,self.N*20)
+		self.NNNKeys = np.array(self.NNNKeys)
+		# print(self.NNNKeys)
+
+	def classify(self):
+		self.animeids = self.dataReader.userAnimeListDict[self.valkey][0]
+		consensus = []
+		for anime_id in self.animeids:
+			# self.NNNKeys = self.dataReader.getNNNeighborsAnime(self.valkey,self.N,anime_id)
+			# idx = [key if self.dataReader.containsAnime(key,anime_id) for key in self.NNNKeys]
+			myFilterFunc = self.dataReader.makeFilter(anime_id)
+			filteredKeys = list(filter(myFilterFunc,self.NNNKeys))
+			scores = []
+			for neighbor_key, neighbor_similarity in filteredKeys:
+				scores.append(self.dataReader.getUserAnimeScore(neighbor_key,anime_id))
+			# print(scores)
+			# print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++=")
+			tmp = np.unique(scores,return_counts=True)
+			if np.size(tmp[0]) == 0:
+				consensus.append(0)
+			else:
+				counts = tmp[1]
+				scores = tmp[0]
+				idx = np.argmax(counts)
+				consensus.append(scores[idx])
+		return consensus, self.valAnimeScore
 
 print('initializing reader object')
 dataReader = myDataReader(.2)
 print('done with reader object')
 
-# NOTE: not sure if forestclassifier even runs right now
-# accuracies = []
-# for valkey in dataReader:
-# 	classifier = ForestClassifier(dataReader,valkey)
-# 	pred,actual = classifier.classify()
-# 	accuracies.append(np.sum(np.equal(pred,actual)))
+# valkey = dataReader.next()
+# classifier = ForestClassifier(dataReader,valkey,4)
+# pred,actual = classifier.classify()
+# totalAnime = len(pred)
+# print(np.sum(np.equal(pred,actual))/totalAnime)
+
+correct = []
+total = 0
+for idx, valkey in enumerate(dataReader):
+	if idx == 100:
+		break
+	# try:
+	print('-------------------------------------------------------------')
+	classifier = FilterClassifier(dataReader,valkey,11)
+	pred,actual = classifier.classify()
+	# print(list(zip(actual,pred)))
+	totalAnime = len(pred)
+	print("1 prob actual {}".format(sum(actual)/totalAnime))
+	print("1 prob pred {}".format(sum(pred)/totalAnime))
+	total = total + totalAnime
+	# print('Ground Truth/ Prediction = {}'.format(list(zip(actual,pred))))
+	print('Total Anime = {}'.format(totalAnime))
+	correct.append(np.sum(np.equal(pred,actual)))
+	print('Accuracy = {}'.format(np.sum(np.equal(pred,actual))/totalAnime))
+	# except:
+	# 	print("++++++++++++++++++++VALKEY NOT FOUND: {}++++++++++++++++++++++++++++".format(valkey))
+
+print("AVERAGE ACCURACY PER ANIME")
+print(sum(correct)/total)
