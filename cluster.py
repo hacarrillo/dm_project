@@ -2,16 +2,17 @@ from sklearn.cluster import KMeans
 from sklearn import metrics
 from sklearn import decomposition
 from sklearn import datasets
-import csv
 import numpy as np
 import matplotlib.pyplot as plt
 
 with open("mediumUserListGenres_Clustering.csv") as f:
     ncols = len(f.readline().split(','))
-
-data = np.loadtxt("mediumUserListGenres_Clustering.csv", delimiter=',', skiprows=1, usecols=range(10, ncols))  # noqa
+data_file = open("smallUserListGenres_Clustering.csv")
+data = np.loadtxt(data_file, delimiter=',', skiprows=1, usecols=range(10, ncols))  # noqa
 x = list(data)
 X = np.array(x).astype("int")
+num_rows = len(X)
+k_clusters = int(math.sqrt(num_rows)/2)
 watched = X[:, 0::2]
 scored = X[:, 1::2]
 average = np.zeros_like(scored)
@@ -27,7 +28,7 @@ X = average
 pca = decomposition.PCA(n_components=2)
 pca.fit(X)
 X = pca.transform(X)
-clustering = KMeans(n_clusters=100, random_state=0).fit(X)
+clustering = KMeans(n_clusters=k_clusters, random_state=0).fit(X)
 
 # Step size of the mesh. Decrease to increase the quality of the VQ.
 h = .02     # point in the mesh [x_min, x_max]x[y_min, y_max].
@@ -49,14 +50,15 @@ plt.imshow(Z, interpolation='nearest',
            cmap=plt.cm.Paired,
            aspect='auto', origin='lower')
 
-plt.plot(X[:, 0], X[:, 1], 'k.', markersize=2)
+plt.plot(X[:, 0], X[:, 1], 'k.', markersize=2, alpha=0.35)
 # Plot the centroids as a white X
 centroids = clustering.cluster_centers_
 plt.scatter(centroids[:, 0], centroids[:, 1],
             marker='x', s=169, linewidths=3,
             color='w', zorder=10)
 plt.title('K-means clustering on the digits dataset (PCA-reduced data)\n'
-          'Centroids are marked with white cross')
+          'Centroids are marked with white cross\n'
+          'Number of clusters:%d ' % k_clusters)
 plt.xlim(x_min, x_max)
 plt.ylim(y_min, y_max)
 plt.xticks(())
