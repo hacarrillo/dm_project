@@ -24,11 +24,13 @@ from sklearn import tree
 class myDataReader:
 	def __init__(self,train_percent):
 		np.random.seed(0)
+		self.max = 37196
 		self.currentVal = 0
 		self.userListDict = {}
 		self.animeListDict = {}
 		self.userAnimeListDict = {}
 		self.userAnimeID = {}
+		self.userAnimeListDict2 = {}
 		# turn paths into input for object
 		with open("./mediumUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  open("./mediumUserAnimeList.csv", "rt", encoding='ISO-8859-1') as userAnimeList,  open("./ourExtendedAnimeList.csv", "rt", encoding='ISO-8859-1') as animeList: 
 			userListReader = csv.reader(userList)
@@ -73,12 +75,15 @@ class myDataReader:
 				# like = 0 if int(row[3]) <= 5 else 1
 				# leave as is for now
 				like = int(row[3])
-				like = 0 if int(row[3]) <= 7 else 1
+				# like = 0 if int(row[3]) <= 7 else 1
+
 				if row[0] in self.userAnimeListDict:
 					self.userAnimeListDict[row[0]][0] = self.userAnimeListDict[row[0]][0] + [row[1]]
 					self.userAnimeListDict[row[0]][1] = self.userAnimeListDict[row[0]][1] + [like]
+					self.userAnimeListDict2[row[0]][int(row[1])] = like
 				else:
 					self.userAnimeListDict[row[0]] = [[row[1]],[like]]
+					self.userAnimeListDict2[row[0]] = {int(row[1]):like}
 
 				if row[0] in self.userAnimeID:
 					self.userAnimeID[row[0]] = self.userAnimeID[row[0]] + [int(row[1])]
@@ -142,7 +147,7 @@ class myDataReader:
 
 	def getNNNeighbors(self, trialkey, N):
 		target_features = self.userListDict[trialkey]
-		binary_target_features = self.userAnimeID[trialkey]
+		binary_target_features = np.array(self.userAnimeID[trialkey])
 
 		keys = []
 		similarity = []
@@ -150,7 +155,8 @@ class myDataReader:
 			features = self.userListDict[key]
 			if key in self.userAnimeID:
 				keys.append(key)
-				binary_features = self.userAnimeID[key]
+				binary_features = np.array(self.userAnimeID[key])
+				# print(binary_features)
 			else:
 				continue
 
@@ -158,17 +164,34 @@ class myDataReader:
 			union = np.size(binary_features) + np.size(binary_target_features) - intersection
 
 			if union == 0:
-				su = 1
+				jaccard = 0
 			else:
-				su = 1 - intersection/union
+				jaccard = intersection/union
 
-			s = np.dot(target_features,features)/(np.linalg.norm(target_features)*np.linalg.norm(features))
-			if s == np.inf or s == np.nan:
-				s = -1;
+			both = binary_features[np.isin(binary_features,binary_target_features)]
+			I = np.size(both)
 
-			s = (s+1)/2
+			maxscore = 10
 
-			similarity.append(su)
+			MSD = 0
+			for anime in both:
+				MSD = ((self.userAnimeListDict2[key][anime]/maxscore) - (self.userAnimeListDict2[trialkey][anime]/maxscore))**2
+
+			if I != 0:
+				MSD = 1 - MSD/I
+			else:
+				MSD = 0
+
+			s = jaccard*MSD
+			# s = jaccard
+
+			# s = np.dot(target_features,features)/(np.linalg.norm(target_features)*np.linalg.norm(features))
+			# if s == np.inf or s == np.nan:
+			# 	s = -1;
+
+			# s = (s+1)/2
+
+			similarity.append(s)
 
 		print(min(similarity))
 		print(max(similarity))
@@ -176,8 +199,8 @@ class myDataReader:
 		keys = np.array(keys)
 		# contains_show = np.array(contains_show)
 
-		# idx = np.argpartition(-1*similarity, N)
-		idx = np.argpartition(similarity, N)
+		idx = np.argpartition(-1*similarity, N)
+		# idx = np.argpartition(similarity, N)
 		idx = idx[:N]
 		keys = keys[idx]
 		similarity = similarity[idx]
@@ -315,21 +338,23 @@ total = 0
 for idx, valkey in enumerate(dataReader):
 	if idx == 100:
 		break
-	# try:
-	print('-------------------------------------------------------------')
-	classifier = FilterClassifier(dataReader,valkey,11)
-	pred,actual = classifier.classify()
-	# print(list(zip(actual,pred)))
-	totalAnime = len(pred)
-	print("1 prob actual {}".format(sum(actual)/totalAnime))
-	print("1 prob pred {}".format(sum(pred)/totalAnime))
-	total = total + totalAnime
-	# print('Ground Truth/ Prediction = {}'.format(list(zip(actual,pred))))
-	print('Total Anime = {}'.format(totalAnime))
-	correct.append(np.sum(np.equal(pred,actual)))
-	print('Accuracy = {}'.format(np.sum(np.equal(pred,actual))/totalAnime))
-	# except:
-	# 	print("++++++++++++++++++++VALKEY NOT FOUND: {}++++++++++++++++++++++++++++".format(valkey))
+	try:
+		print('-------------------------------------------------------------')
+		classifier = FilterClassifier(dataReader,valkey,11)
+		pred,actual = classifier.classify()
+		# print(list(zip(actual,pred)))
+		totalAnime = len(pred)
+		print("1 prob actual {}".format(sum(actual)/totalAnime))
+		print("1 prob pred {}".format(sum(pred)/totalAnime))
+		total = total + totalAnime
+		# print('Ground Truth/ Prediction = {}'.format(list(zip(actual,pred))))
+		print('Total Anime = {}'.format(totalAnime))
+		# CHANGE THIS
+		correct.append(np.sum(np.equal(pred,actual)))
+		print('Average Missed = {}'.format(np.abs(np.sum(pred-actual))/totalAnime))
+		print(list(zip(actual,pred)))
+	except:
+		print("++++++++++++++++++++VALKEY NOT FOUND: {}++++++++++++++++++++++++++++".format(valkey))
 
 print("AVERAGE ACCURACY PER ANIME")
 print(sum(correct)/total)
