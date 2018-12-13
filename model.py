@@ -32,7 +32,7 @@ class myDataReader:
 		self.userAnimeID = {}
 		self.userAnimeListDict2 = {}
 		# turn paths into input for object
-		with open("./mediumUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  open("./mediumUserAnimeList.csv", "rt", encoding='ISO-8859-1') as userAnimeList,  open("./ourExtendedAnimeList.csv", "rt", encoding='ISO-8859-1') as animeList: 
+		with open("./filteredUserListGenres.csv", "rt", encoding='ISO-8859-1') as userList,  open("./filteredUserAnimeList.csv", "rt", encoding='ISO-8859-1') as userAnimeList,  open("./ourExtendedAnimeList.csv", "rt", encoding='ISO-8859-1') as animeList: 
 			userListReader = csv.reader(userList)
 			animeListReader = csv.reader(animeList)
 			userAnimeListReader = csv.reader(userAnimeList)
@@ -47,7 +47,7 @@ class myDataReader:
 				f_watched = f[0::2]
 				f_rated = f[1::2]
 				f_watched = np.array(f_watched)
-				# to avoid division by zero,set zeros to 1
+				# to avoid division by zero, set zeros to 1
 				idx = f_watched == 0
 				f_watched[idx] = 1
 
@@ -105,6 +105,9 @@ class myDataReader:
 				c = c + 1
 			self.valSize = len(self.val_keys)
 
+			self.train_keys = np.array(self.train_keys)
+			self.val_keys = np.array(self.val_keys)
+
 	def getNNNeighborsAnime(self, trialkey, N, animeID):
 		target_features = self.userListDict[trialkey];
 
@@ -151,12 +154,13 @@ class myDataReader:
 
 		keys = []
 		similarity = []
-		for key in self.train_keys:
+		train_indices = np.random.choice(len(self.train_keys),int(len(self.train_keys)*.15))
+		subset = self.train_keys[train_indices]
+		for key in subset:
 			features = self.userListDict[key]
 			if key in self.userAnimeID:
 				keys.append(key)
 				binary_features = np.array(self.userAnimeID[key])
-				# print(binary_features)
 			else:
 				continue
 
@@ -296,7 +300,7 @@ class FilterClassifier:
 		self.valAnimeInfo = np.array(self.valAnimeInfo)
 		self.valAnimeScore = np.array(self.valAnimeScore)
 
-		self.NNNKeys = self.dataReader.getNNNeighbors(self.valkey,self.N*20)
+		self.NNNKeys = self.dataReader.getNNNeighbors(self.valkey,self.N)
 		self.NNNKeys = np.array(self.NNNKeys)
 		# print(self.NNNKeys)
 
@@ -324,7 +328,7 @@ class FilterClassifier:
 		return consensus, self.valAnimeScore
 
 print('initializing reader object')
-dataReader = myDataReader(.2)
+dataReader = myDataReader(.8)
 print('done with reader object')
 
 # valkey = dataReader.next()
@@ -336,25 +340,30 @@ print('done with reader object')
 correct = []
 total = 0
 for idx, valkey in enumerate(dataReader):
-	if idx == 100:
-		break
+	# if idx == 100:
+	# 	break
+	f_out_user = open('resultsUserAverageMissed.txt','a')
+	f_out_anime = open('resultsAnimeMissed.txt','a')
+	f_out_actual = open('gt.txt','a')
 	try:
 		print('-------------------------------------------------------------')
-		classifier = FilterClassifier(dataReader,valkey,11)
+		classifier = FilterClassifier(dataReader,valkey,250)
 		pred,actual = classifier.classify()
 		# print(list(zip(actual,pred)))
 		totalAnime = len(pred)
-		print("1 prob actual {}".format(sum(actual)/totalAnime))
-		print("1 prob pred {}".format(sum(pred)/totalAnime))
 		total = total + totalAnime
 		# print('Ground Truth/ Prediction = {}'.format(list(zip(actual,pred))))
 		print('Total Anime = {}'.format(totalAnime))
 		# CHANGE THIS
-		correct.append(np.sum(np.equal(pred,actual)))
-		print('Average Missed = {}'.format(np.abs(np.sum(pred-actual))/totalAnime))
-		print(list(zip(actual,pred)))
+		# correct.append(np.sum(np.equal(pred,actual)))
+		missed_avg = np.sum(abs(pred-actual))/totalAnime
+		print('Average Missed = {}'.format(missed_avg))
+		# print(list(zip(actual,pred)))
+		f_out_user.write(str(missed_avg) + '\n')
+		missed = abs(pred-actual)
+		for m in missed:
+			f_out_anime.write(str(m)+'\n')
+		for m in actual:
+			f_out_actual.write(str(m)+'\n')
 	except:
 		print("++++++++++++++++++++VALKEY NOT FOUND: {}++++++++++++++++++++++++++++".format(valkey))
-
-print("AVERAGE ACCURACY PER ANIME")
-print(sum(correct)/total)
